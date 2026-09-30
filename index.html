@@ -96,6 +96,9 @@ footer{margin-top:40px;padding-top:14px;border-top:1px solid var(--line);font-si
 .mapbox{height:540px;border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:18px;background:var(--surface)}
 @media (max-width:560px){.mapbox{height:420px}}
 .leaflet-container{font-family:var(--f-body);background:var(--bg)}
+.leaflet-tile-pane{filter:saturate(.35) sepia(.15)}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.85) saturate(.3)}}
+:root[data-theme="dark"] .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.85) saturate(.3)}
 .leaflet-popup-content-wrapper,.leaflet-popup-tip{background:var(--surface);color:var(--ink)}
 .leaflet-popup-content{margin:12px 14px;font-size:.85rem;line-height:1.45}
 .pop b{font-family:var(--f-display);font-size:1rem}
@@ -208,7 +211,7 @@ document.getElementById('nTotal').textContent=fmt(tot)+' anúncios analisados';
 const dark=()=>document.documentElement.dataset.theme==='dark'||(document.documentElement.dataset.theme!=='light'&&matchMedia('(prefers-color-scheme: dark)').matches);
 const PAL=['#F3E3B5','#E2BE6A','#C48A2C','#8E5A1C','#4E2F12'];
 const map=L.map('map',{scrollWheelZoom:false}).fitBounds([[-25.36,-57.70],[-25.18,-57.40]]);
-L.tileLayer('https://{s}.basemaps.cartocdn.com/'+(dark()?'dark_all':'light_all')+'/{z}/{x}/{y}{r}.png',{attribution:'&copy; OpenStreetMap &copy; CARTO',subdomains:'abcd',maxZoom:18}).addTo(map);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',maxZoom:19}).addTo(map);
 map.on('click',()=>map.scrollWheelZoom.enable());
 const layer=L.layerGroup().addTo(map);
 const MK={};
