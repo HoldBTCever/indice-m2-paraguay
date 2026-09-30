@@ -215,6 +215,18 @@ L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy
 map.on('click',()=>map.scrollWheelZoom.enable());
 const layer=L.layerGroup().addTo(map);
 const MK={};
+let GEO=null;
+const nrm=s=>(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim();
+const GA={'las lomas carmelitas':'las lomas','herrera':'luis alberto de herrera','mcal estigarribia':'mariscal estigarribia','mcal lopez':'mariscal lopez','barrio jara':'jara','gral diaz':'general diaz','catedral':'la catedral','roberto l petit':'roberto luis pettit','j augusto saldivar':'julian augusto saldivar','juan e o leary':'juan emilio o leary','juan l mallorquin':'juan leon mallorquin'};
+function polyFor(r){
+  if(!GEO) return null; if(r._p!==undefined) return r._p;
+  const lvl=r.zona==='Asunción'?10:8; const want=GA[nrm(r.nome)]||nrm(r.nome); const strip=s=>s.replace(/^(la|el|los|las) /,'');
+  let best=null,bd=1e9;
+  for(const f of GEO.features){ const pr=f.properties; if(pr.l!==lvl) continue; const fn=nrm(pr.n).replace(/^distrito de /,''); if(fn!==want && strip(fn)!==strip(want)) continue; const d=r.ll?Math.hypot(pr.c[0]-r.ll[0],pr.c[1]-r.ll[1]):0; if(d<bd){bd=d;best=f} }
+  if(best&&r.ll&&bd>(lvl===10?0.05:0.8)) best=null;
+  r._p=best; return best;
+}
+fetch('limites.geojson').then(x=>x.ok?x.json():null).then(j=>{if(j){GEO=j;render()}}).catch(()=>{});
 let fitted='all';
 document.getElementById('mapnav').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;const [a,c,d,f]=b.dataset.b.split(',').map(Number);map.fitBounds([[a,c],[d,f]])});
 function drawMap(list,m){
@@ -225,16 +237,29 @@ function drawMap(list,m){
   const vals=pts.map(r=>r.m[m].v).sort((a,b)=>a-b);
   const q=[.2,.4,.6,.8].map(p=>vals[Math.floor((vals.length-1)*p)]);
   const cls=v=>q.filter(x=>v>x).length;
-  const maxN=Math.max(...pts.map(r=>r.m[m].n));
-  pts.forEach(r=>{const x=r.m[m];const c=cls(x.v);
-    const rad=5+Math.sqrt(x.n/maxN)*16;
-    const src=['C21','RE/MAX','SkyOne'].filter(s=>x.s[s]).map(s=>s+': '+fmt(x.s[s][1],dec())+' <span class="muted">('+x.s[s][0]+')</span>').join('<br>');
-    MK[r.zona+r.nome]=L.circleMarker(r.ll,{radius:rad,color:dark()?'#EEEAE0':'#1B1A17',weight:1,fillColor:PAL[c],fillOpacity:.88,dashArray:x.n<10?'3 3':null})
-     .bindPopup('<div class="pop"><b>'+r.nome+'</b> <span class="muted">'+r.zona+'</span><div class="big">'+fmt(x.v,dec())+' '+unit()+'</div><div class="muted">'+x.n+' anúncios</div><div style="margin-top:6px">'+src+(m==='vd'&&r.tl?'<br>TuLugar: '+fmt(r.tl):'')+'</div></div>')
-     .bindTooltip(r.nome+' · '+fmt(x.v,dec()),{direction:'top'})
-     .addTo(layer)});
+  const ink=dark()?'#EEEAE0':'#1B1A17';
+  const withPoly=[],noPoly=[];
+  pts.forEach(r=>(polyFor(r)?withPoly:noPoly).push(r));
+  const pop=(r,x)=>{const src=['C21','RE/MAX','SkyOne'].filter(s=>x.s[s]).map(s=>s+': '+fmt(x.s[s][1],dec())+' <span class="muted">('+x.s[s][0]+')</span>').join('<br>');return '<div class="pop"><b>'+r.nome+'</b> <span class="muted">'+r.zona+'</span><div class="big">'+fmt(x.v,dec())+' '+unit()+'</div><div class="muted">'+x.n+' anúncios</div><div style="margin-top:6px">'+src+(m==='vd'&&r.tl?'<br>TuLugar: '+fmt(r.tl):'')+'</div></div>'};
+  withPoly.sort((a,b)=>(a.zona==='Asunción')-(b.zona==='Asunción'));
+  withPoly.forEach(r=>{const x=r.m[m];const c=cls(x.v);const f=polyFor(r);
+    const base={color:ink,weight:.8,opacity:.6,fillColor:PAL[c],fillOpacity:.55,dashArray:x.n<10?'4 3':null};
+    const g=L.geoJSON(f,{style:()=>base});
+    g.on('mouseover',()=>{g.setStyle({weight:3,opacity:1,fillOpacity:.8});g.bringToFront()});
+    g.on('mouseout',()=>{g.setStyle(base)});
+    g.bindPopup(pop(r,x)).bindTooltip(r.nome+' · '+fmt(x.v,dec()),{sticky:true});
+    g.addTo(layer); MK[r.zona+r.nome]={ll:r.ll||g.getBounds().getCenter(),lay:g};
+  });
+  const maxN=Math.max(1,...noPoly.map(r=>r.m[m].n));
+  noPoly.forEach(r=>{const x=r.m[m];const c=cls(x.v);
+    const rad=5+Math.sqrt(x.n/maxN)*12;
+    const cm=L.circleMarker(r.ll,{radius:rad,color:ink,weight:1,fillColor:PAL[c],fillOpacity:.88,dashArray:x.n<10?'3 3':null})
+     .bindPopup(pop(r,x)).bindTooltip(r.nome+' · '+fmt(x.v,dec()),{direction:'top'}).addTo(layer);
+    cm.on('mouseover',()=>cm.setStyle({weight:3}));cm.on('mouseout',()=>cm.setStyle({weight:1}));
+    MK[r.zona+r.nome]={ll:r.ll,lay:cm};
+  });
   const edges=[vals[0],...q,vals[vals.length-1]];
-  sc.innerHTML='<span>'+unit()+':</span>'+PAL.map((p,i)=>'<span><i style="background:'+p+'"></i>'+fmt(edges[i],dec())+'–'+fmt(edges[i+1],dec())+'</span>').join('')+'<span>tamanho = nº de anúncios · borda tracejada = menos de 10</span>';
+  sc.innerHTML='<span>'+unit()+':</span>'+PAL.map((p,i)=>'<span><i style="background:'+p+'"></i>'+fmt(edges[i],dec())+'–'+fmt(edges[i+1],dec())+'</span>').join('')+'<span>área = limite do bairro ou distrito · círculo = local sem limite no mapa · tracejado = menos de 10 anúncios</span>';
   if(st.zn!==fitted){fitted=st.zn; if(st.zn!=='all') map.fitBounds(L.latLngBounds(pts.map(r=>r.ll)).pad(.1),{maxZoom:14}); else map.fitBounds([[-25.36,-57.70],[-25.18,-57.40]])}
 }
 function setSeg(id,val){document.querySelectorAll('#'+id+' button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.v===val)))}
@@ -270,7 +295,7 @@ bind('op','op');bind('tp','tp');
 const zsel=document.getElementById('zn');const deps=[...new Set(rows.map(r=>r.zona))].sort((a,b)=>rows.filter(r=>r.zona===b).length-rows.filter(r=>r.zona===a).length);zsel.innerHTML='<option value="all">Todo o Paraguai</option>'+deps.map(d=>`<option value="${d}">${d}</option>`).join('');if(!deps.includes(st.zn))st.zn='all';zsel.value=st.zn;zsel.addEventListener('change',e=>{st.zn=e.target.value;st.open=null;render()});
 document.getElementById('q').addEventListener('input',e=>{st.q=e.target.value;render()});
 document.getElementById('minN').addEventListener('change',e=>{st.minN=+e.target.value;render()});
-document.getElementById('list').addEventListener('click',e=>{const b=e.target.closest('.row');if(!b)return;st.open=st.open===b.dataset.k?null:b.dataset.k;render();const mk=MK[b.dataset.k];if(st.open&&mk){map.setView(mk.getLatLng(),Math.max(map.getZoom(),13));mk.openPopup()}});
+document.getElementById('list').addEventListener('click',e=>{const b=e.target.closest('.row');if(!b)return;st.open=st.open===b.dataset.k?null:b.dataset.k;render();const mk=MK[b.dataset.k];if(st.open&&mk){map.setView(mk.ll,Math.max(map.getZoom(),13));mk.lay.openPopup(mk.ll)}});
 
 // rankings
 const big=rows.filter(r=>r.m.vd&&r.m.vd.n>=10).sort((a,b)=>b.m.vd.v-a.m.vd.v);
